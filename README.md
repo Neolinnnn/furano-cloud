@@ -44,7 +44,7 @@
 4. 點 **Save**
 5. 等 1~2 分鐘後，你的網址就是：
    ```
-   https://neolinnnn.github.io/google版本/
+   https://neolinnnn.github.io/furano-cloud/
    ```
 
 ### Step 5：匯入既有資料
