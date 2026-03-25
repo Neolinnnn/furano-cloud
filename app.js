@@ -14,6 +14,8 @@ let currentSort = { column: 'id', order: 'asc' };
 // ===== QR Helper =====
 function getQrUrl(bank, account) {
   if (!bank || !account) return null;
+  bank = String(bank);
+  account = String(account);
   const match = bank.match(/^(\d{3})/);
   const bankCode = match ? match[1] : bank.substring(0, 3);
   const uri = `TWQRP://${bankCode}ntransfer/15/01/V1?D6=${account}&D9=&D10=901`;
