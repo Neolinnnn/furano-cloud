@@ -1,0 +1,353 @@
+// ===== 設定：填入你的 Google Apps Script Web App URL =====
+const API_URL = "在這裡貼上你的 Google Apps Script Web App URL";
+
+// ===== State =====
+let currentUser = null;
+let allExpenses = [];
+let filteredExpenses = [];
+let allMembers = [];
+let userDetails = {};
+let currentSort = { column: 'id', order: 'asc' };
+
+// ===== API Helper =====
+async function callAPI(action, payload = null) {
+  const url = `${API_URL}?action=${action}`;
+  const options = payload
+    ? { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "text/plain" } }
+    : { method: "GET" };
+  // GAS requires redirect follow
+  options.redirect = "follow";
+  const res = await fetch(url, options);
+  return res.json();
+}
+
+// ===== Init =====
+document.addEventListener("DOMContentLoaded", () => { loadMembers(); });
+
+function showLoader(show) {
+  document.getElementById("loaderOverlay").style.display = show ? "flex" : "none";
+}
+
+async function loadMembers() {
+  showLoader(true);
+  try {
+    allMembers = await callAPI("getMembers");
+    const select = document.getElementById("memberSelect");
+    const addPayer = document.getElementById("addPayer");
+    const filterPayer = document.getElementById("filterPayer");
+    allMembers.forEach(m => {
+      select.appendChild(new Option(m, m));
+      addPayer.appendChild(new Option(m, m));
+      filterPayer.appendChild(new Option(m, m));
+    });
+  } catch (err) { showToast("載入失敗，請確認 API URL 已設定", "error"); }
+  finally { showLoader(false); }
+}
+
+// ===== Login / Logout =====
+function login() {
+  const name = document.getElementById("memberSelect").value;
+  if (!name) { showToast("請選擇成員", "error"); return; }
+  currentUser = name;
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("appContainer").style.display = "block";
+  document.getElementById("userName").textContent = name;
+  document.getElementById("userAvatar").textContent = name.charAt(name.length - 1);
+  loadBankAccount(); loadAllBankAccounts(); loadDashboard(); loadExpenses(); loadSettlement();
+}
+
+function logout() {
+  currentUser = null;
+  document.getElementById("loginScreen").style.display = "flex";
+  document.getElementById("appContainer").style.display = "none";
+  switchTab("account");
+}
+
+// ===== Tabs =====
+function switchTab(tabName) {
+  document.querySelectorAll(".tab-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.tab === tabName));
+  document.querySelectorAll(".tab-content").forEach(tc => tc.classList.toggle("active", tc.id === `tab-${tabName}`));
+  if (tabName === "settlement") loadSettlement();
+  else if (tabName === "expenses") { loadDashboard(); loadExpenses(); }
+}
+
+// ===== Bank Accounts =====
+async function loadBankAccount() {
+  const accounts = await callAPI("getBankAccounts");
+  const info = accounts[currentUser];
+  if (info) {
+    document.getElementById("bankName").value = info.bank || "";
+    document.getElementById("bankAccount").value = info.account || "";
+    document.getElementById("btnDeleteBank").style.display = "block";
+  } else {
+    document.getElementById("bankName").value = "";
+    document.getElementById("bankAccount").value = "";
+    document.getElementById("btnDeleteBank").style.display = "none";
+  }
+}
+
+async function loadAllBankAccounts() {
+  const accounts = await callAPI("getBankAccounts");
+  const container = document.getElementById("allBankAccounts");
+  if (!Object.keys(accounts).length) {
+    container.innerHTML = '<p style="color:var(--text-muted);font-size:14px;">目前還沒有人設定帳號</p>';
+    return;
+  }
+  let html = '<div class="settlement-grid">';
+  for (const [name, info] of Object.entries(accounts)) {
+    html += `<div class="balance-card positive"><div class="balance-avatar">${name.charAt(name.length-1)}</div>
+      <div class="balance-info"><div class="balance-name">${name}</div>
+      <div style="font-size:13px;color:var(--text-secondary);">${info.bank} ••••${(info.account||"").slice(-4)}</div></div></div>`;
+  }
+  container.innerHTML = html + "</div>";
+}
+
+async function saveBankAccount() {
+  const bank = document.getElementById("bankName").value.trim();
+  const account = document.getElementById("bankAccount").value.trim();
+  if (!bank || !account) { showToast("請填寫銀行名稱和帳號", "error"); return; }
+  showLoader(true);
+  await callAPI("saveBankAccount", { name: currentUser, bank, account });
+  showToast("帳號已儲存！", "success");
+  document.getElementById("btnDeleteBank").style.display = "block";
+  loadAllBankAccounts();
+  showLoader(false);
+}
+
+async function deleteBankAccount() {
+  if (!confirm("確定要刪除？")) return;
+  showLoader(true);
+  await callAPI("deleteBankAccount", { name: currentUser });
+  showToast("帳號已刪除", "success");
+  loadBankAccount(); loadAllBankAccounts();
+  showLoader(false);
+}
+
+// ===== Dashboard & Expenses =====
+async function loadDashboard() {
+  const data = await callAPI("getSummary");
+  document.getElementById("dashCount").textContent = data.count;
+  document.getElementById("dashTwd").textContent = `NT$ ${formatNum(data.total_twd)}`;
+  document.getElementById("dashJpy").textContent = `¥ ${formatNum(data.total_jpy)}`;
+  document.getElementById("dashCalcTwd").textContent = `NT$ ${formatNum(data.calculated_twd)}`;
+}
+
+async function loadExpenses() {
+  showLoader(true);
+  try {
+    allExpenses = await callAPI("getExpenses");
+    applyFilterAndSort();
+  } finally { showLoader(false); }
+}
+
+function toggleSort(col) {
+  if (currentSort.column === col) currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
+  else { currentSort.column = col; currentSort.order = 'asc'; }
+  applyFilterAndSort();
+}
+
+function applyFilterAndSort() {
+  const catFilter = document.getElementById("filterCategory").value;
+  const payerFilter = document.getElementById("filterPayer").value;
+  filteredExpenses = allExpenses.filter(e => {
+    if (catFilter && e.category !== catFilter) return false;
+    if (payerFilter && !e.payers.includes(payerFilter) && e.payer !== payerFilter) return false;
+    return true;
+  });
+  filteredExpenses.sort((a, b) => {
+    let va = a[currentSort.column], vb = b[currentSort.column];
+    if (va == null) va = ''; if (vb == null) vb = '';
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    if (va < vb) return currentSort.order === 'asc' ? -1 : 1;
+    if (va > vb) return currentSort.order === 'asc' ? 1 : -1;
+    return 0;
+  });
+  renderExpenseTable();
+}
+
+function renderExpenseTable() {
+  const tbody = document.getElementById("expenseBody");
+  const catIcons = { 住宿:"🏨", 交通:"🚌", 餐飲:"🍜", 雪場:"⛷️", 移動:"✈️", "門票/活動":"🎫" };
+  let html = "";
+  filteredExpenses.forEach(exp => {
+    const statusCls = exp.status === "ok" ? "badge-ok" : exp.status === "各自負擔" ? "badge-self" : "badge-pending";
+    const statusTxt = exp.status === "ok" ? "✓" : exp.status === "各自負擔" ? "各自" : "⚠";
+    const icon = catIcons[exp.category] || "📌";
+    html += `<tr>
+      <td>${exp.id}</td>
+      <td>${esc(exp.date||"-")}</td>
+      <td><div style="font-weight:600">${esc(exp.item||"-")}</div><div style="font-size:11px;color:var(--text-muted)">${icon} ${esc(exp.category||"-")}</div></td>
+      <td>${esc(exp.payer)}</td>
+      <td style="font-weight:600;color:var(--warning);">${exp.amount_twd_total != null ? "NT$"+formatNum(exp.amount_twd_total) : "-"}</td>
+      <td><span class="badge ${statusCls}">${statusTxt}</span></td>
+      <td>
+        <button class="btn-icon" onclick="showDetail(${exp.id})" title="檢視">👁️</button>
+        <button class="btn-icon" onclick="deleteExp(${exp.id})" title="刪除">🗑️</button>
+      </td>
+    </tr>`;
+  });
+  tbody.innerHTML = html || '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:30px;">無資料</td></tr>';
+}
+
+// ===== Add / Delete =====
+function showAddExpenseModal() { document.getElementById("expenseModal").style.display = "flex"; }
+function closeExpenseModal() { document.getElementById("expenseModal").style.display = "none"; }
+
+async function submitAddExpense() {
+  const item = document.getElementById("addItem").value;
+  const note = document.getElementById("addNote").value;
+  const payer = document.getElementById("addPayer").value;
+  if ((!item && !note) || !payer) { showToast("項目和代墊人為必填", "error"); return; }
+
+  showLoader(true);
+  await callAPI("addExpense", {
+    "日期": document.getElementById("addDate").value,
+    "項目": item, "備註": note, "代墊人": payer,
+    "應付人員": document.getElementById("addDebtors").value,
+    "金額-台幣": document.getElementById("addTwd").value,
+    "金額-日幣": document.getElementById("addJpy").value,
+    "類別": document.getElementById("addCategory").value,
+  });
+  showToast("新增成功", "success"); closeExpenseModal();
+  loadDashboard(); loadExpenses();
+  showLoader(false);
+}
+
+async function deleteExp(id) {
+  if (!confirm("確定要刪除？")) return;
+  showLoader(true);
+  await callAPI("deleteExpense", { id });
+  showToast("已刪除", "success");
+  loadDashboard(); loadExpenses();
+  showLoader(false);
+}
+
+function showDetail(id) {
+  const exp = allExpenses.find(e => e.id === id);
+  if (!exp || !exp.amount_twd_total) { showToast("無法顯示", "warning"); return; }
+  const debtors = exp.debtors.length ? exp.debtors : allMembers;
+  const payers = exp.payers.length ? exp.payers : [exp.payer];
+  const perP = Math.round(exp.amount_twd_total / debtors.length);
+  const perPay = Math.round(exp.amount_twd_total / payers.length);
+  let html = `<div style="margin-bottom:15px;padding:15px;background:rgba(255,255,255,0.05);border-radius:8px;">
+    <h3 style="margin:0 0 10px;color:var(--accent);font-size:22px;">💰 NT$ ${formatNum(exp.amount_twd_total)}</h3>
+    <div style="font-size:14px;color:var(--text-secondary);line-height:1.6;">
+      <div><b>📌</b> ${esc(exp.item||"-")} <span style="color:var(--text-muted)">${esc(exp.note||"")}</span></div>
+      <div><b>📅</b> ${esc(exp.date||"-")}</div></div></div>
+    <div style="margin-bottom:12px;"><h4 style="margin:0 0 8px;font-size:15px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:5px;">
+      🎯 應付 <span style="float:right;font-size:13px;font-weight:normal;color:var(--warning);">每人 NT$ ${formatNum(perP)}</span></h4>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">${debtors.map(d=>`<span class="badge badge-pending">${d}</span>`).join("")}</div></div>
+    <div><h4 style="margin:0 0 8px;font-size:15px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:5px;">
+      💳 代墊 <span style="float:right;font-size:13px;font-weight:normal;color:var(--accent);">每人 NT$ ${formatNum(perPay)}</span></h4>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">${payers.map(p=>`<span class="badge badge-ok">${p}</span>`).join("")}</div></div>`;
+  document.getElementById("detailModalContent").innerHTML = html;
+  document.getElementById("expenseDetailModal").style.display = "flex";
+}
+
+// ===== Settlement =====
+async function loadSettlement() {
+  showLoader(true);
+  try {
+    const data = await callAPI("getSettlement");
+    userDetails = data.user_details || {};
+    populateDetailMemberSelect();
+    renderBalance(data.balance);
+    renderTransfers(data.transfers);
+    updatePersonalSummary(data.balance);
+    renderPersonalDetails();
+  } finally { showLoader(false); }
+}
+
+function populateDetailMemberSelect() {
+  const sel = document.getElementById("detailMemberSelect");
+  if (!sel) return;
+  sel.innerHTML = "";
+  Object.keys(userDetails).forEach(m => {
+    const opt = new Option(m, m);
+    if (m === currentUser) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function renderPersonalDetails() {
+  const sel = document.getElementById("detailMemberSelect");
+  if (!sel) return;
+  const member = sel.value;
+  const list = (userDetails[member] || []);
+  const tbody = document.getElementById("personalDetailBody");
+  const catIcons = { 住宿:"🏨", 交通:"🚌", 餐飲:"🍜", 雪場:"⛷️", 移動:"✈️", "門票/活動":"🎫" };
+  let html = "", totalPay = 0, totalOwe = 0;
+
+  list.forEach(tx => {
+    const isPay = tx.type === "pay";
+    const amt = Number(tx.amount);
+    if (isPay) totalPay += amt; else totalOwe += amt;
+    const sign = isPay ? "+" : "-";
+    const color = isPay ? "var(--accent)" : "var(--warning)";
+    const icon = catIcons[tx.category] || "📌";
+    html += `<tr><td>${esc(tx.date)}</td><td>${icon}</td>
+      <td><div style="font-weight:600">${esc(tx.item||"-")}</div><div style="font-size:11px;color:var(--text-muted)">${esc(tx.note||"")}</div></td>
+      <td><span class="badge ${isPay?'badge-ok':'badge-pending'}">${esc(tx.desc)}</span></td>
+      <td style="color:${color};font-weight:bold;text-align:right;">${sign} NT$ ${formatNum(amt)}</td></tr>`;
+  });
+
+  if (!list.length) html = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">無明細</td></tr>';
+  tbody.innerHTML = html;
+
+  const net = totalPay - totalOwe;
+  const netColor = net > 0 ? "var(--accent)" : net < 0 ? "var(--error)" : "var(--text-primary)";
+  document.getElementById("personalDetailTotal").innerHTML = `
+    <div style="color:var(--text-secondary);margin-bottom:5px;">代墊: <span style="color:var(--accent)">+NT$ ${formatNum(totalPay)}</span> &nbsp;|&nbsp; 應付: <span style="color:var(--warning)">-NT$ ${formatNum(totalOwe)}</span></div>
+    <div style="font-size:1.3em;color:${netColor};margin-top:10px;border-top:1px solid rgba(255,255,255,0.1);padding-top:10px;">淨額: ${net>0?"+":""}NT$ ${formatNum(net)}</div>`;
+}
+
+function updatePersonalSummary(balance) {
+  const div = document.getElementById("personalSummary");
+  const b = balance[currentUser] || 0;
+  if (b === 0) div.innerHTML = `<div><h2>👋 嗨，${currentUser}</h2><p style="color:var(--text-secondary)">已結清！</p></div><div class="ps-amount ps-zero">NT$ 0</div>`;
+  else if (b > 0) div.innerHTML = `<div><h2>👋 嗨，${currentUser}</h2><p style="color:var(--text-secondary)">可收回</p></div><div class="ps-amount ps-positive">+ NT$ ${formatNum(b)}</div>`;
+  else div.innerHTML = `<div><h2>👋 嗨，${currentUser}</h2><p style="color:var(--text-secondary)">需支付</p></div><div class="ps-amount ps-negative">- NT$ ${formatNum(Math.abs(b))}</div>`;
+  div.style.display = "flex";
+}
+
+function renderBalance(balance) {
+  const grid = document.getElementById("balanceGrid");
+  let html = "";
+  Object.entries(balance).sort((a,b) => Math.abs(b[1]) - Math.abs(a[1])).forEach(([name, amt]) => {
+    const cls = amt > 0 ? "positive" : amt < 0 ? "negative" : "zero";
+    const label = amt > 0 ? "可收回" : amt < 0 ? "需支付" : "已結清";
+    const sign = amt > 0 ? "+" : amt < 0 ? "-" : "";
+    html += `<div class="balance-card ${cls}" style="cursor:pointer;" onclick="selectMember('${name}')">
+      <div class="balance-avatar">${name.charAt(name.length-1)}</div>
+      <div class="balance-info"><div class="balance-name">${name}</div>
+      <div class="balance-amount">${sign}NT$ ${formatNum(Math.abs(amt))}</div>
+      <div class="balance-label">${label}</div></div></div>`;
+  });
+  grid.innerHTML = html;
+}
+
+function selectMember(name) {
+  const sel = document.getElementById("detailMemberSelect");
+  if (sel) { sel.value = name; renderPersonalDetails(); sel.scrollIntoView({ behavior:"smooth", block:"center" }); }
+}
+
+function renderTransfers(transfers) {
+  const list = document.getElementById("transferList");
+  if (!transfers.length) { list.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px;">沒有需要轉帳的項目</p>'; return; }
+  let html = "";
+  transfers.forEach(t => {
+    html += `<div class="transfer-item">
+      <span class="transfer-from">${t.from}</span><span class="transfer-arrow">→</span>
+      <span class="transfer-to">${t.to}</span><span class="transfer-amount">NT$ ${formatNum(t.amount)}</span></div>`;
+  });
+  list.innerHTML = html;
+}
+
+// ===== Utils =====
+function formatNum(n) { return n == null ? "-" : Math.round(n).toLocaleString(); }
+function esc(s) { if (!s) return ""; const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+function showToast(msg, type = "success") {
+  const t = document.createElement("div"); t.className = `toast toast-${type}`; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 3000);
+}

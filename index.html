@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>北海道旅遊拆帳</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Loader -->
+  <div id="loaderOverlay" style="display:none">
+    <div class="spinner"></div>
+    <div style="color:white;font-weight:600">處理中...</div>
+  </div>
+
+  <!-- Login -->
+  <div class="login-container" id="loginScreen">
+    <div class="login-card">
+      <h1>🏔️ 旅遊拆帳</h1>
+      <p class="subtitle">選擇你的名字來開始</p>
+      <div style="text-align:center"><span class="trip-badge">🇯🇵 北海道之旅</span></div>
+      <div class="form-group">
+        <label>選擇成員</label>
+        <select id="memberSelect"><option value="">請選擇...</option></select>
+      </div>
+      <button class="btn btn-primary" onclick="login()">進入系統</button>
+    </div>
+  </div>
+
+  <!-- Main App -->
+  <div class="app-container" id="appContainer">
+    <header class="app-header">
+      <div class="logo"><h1>🏔️ 北海道拆帳</h1></div>
+      <div class="user-badge">
+        <div class="user-avatar" id="userAvatar"></div>
+        <span class="name" id="userName"></span>
+        <button class="btn-logout" onclick="logout()">登出</button>
+      </div>
+    </header>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="account" onclick="switchTab('account')">💳 我的帳戶</button>
+      <button class="tab-btn" data-tab="expenses" onclick="switchTab('expenses')">📊 花費明細</button>
+      <button class="tab-btn" data-tab="settlement" onclick="switchTab('settlement')">💰 拆帳結果</button>
+    </div>
+
+    <!-- Tab 1: Account -->
+    <div class="tab-content active" id="tab-account">
+      <div id="personalSummary" class="personal-summary" style="display:none;"></div>
+      <div class="card">
+        <div class="card-title"><span class="icon">🏦</span> 我的帳號設定</div>
+        <div class="bank-form">
+          <div class="form-group"><label>銀行名稱</label><input type="text" id="bankName" placeholder="例：中國信託"></div>
+          <div class="form-group"><label>銀行帳號</label><input type="text" id="bankAccount" placeholder="例：1234567890"></div>
+        </div>
+        <div style="display:flex;gap:12px;">
+          <button class="btn btn-primary" onclick="saveBankAccount()">💾 儲存</button>
+          <button class="btn btn-danger" id="btnDeleteBank" style="display:none;" onclick="deleteBankAccount()">🗑️ 刪除</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="icon">👥</span> 成員帳號列表</div>
+        <div id="allBankAccounts"></div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Expenses -->
+    <div class="tab-content" id="tab-expenses">
+      <div class="dashboard-grid">
+        <div class="dash-card"><div class="dash-label">總筆數</div><div class="dash-value" id="dashCount">0</div></div>
+        <div class="dash-card"><div class="dash-label">台幣記帳總計</div><div class="dash-value" id="dashTwd">NT$ 0</div></div>
+        <div class="dash-card"><div class="dash-label">日幣記帳總計</div><div class="dash-value" id="dashJpy">¥ 0</div></div>
+        <div class="dash-card"><div class="dash-label">換算台幣總額</div><div class="dash-value" id="dashCalcTwd">NT$ 0</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:10px;"><span class="icon">📋</span> 花費明細表</div>
+          <div>
+            <button class="btn btn-success btn-sm" onclick="showAddExpenseModal()">➕ 新增</button>
+          </div>
+        </div>
+        <div class="table-actions">
+          <select id="filterCategory" class="filter-select" onchange="applyFilterAndSort()">
+            <option value="">🎯 所有類別</option>
+            <option value="住宿">住宿</option><option value="交通">交通</option>
+            <option value="移動">移動</option><option value="餐飲">餐飲</option>
+            <option value="雪場">雪場</option><option value="門票/活動">門票/活動</option>
+          </select>
+          <select id="filterPayer" class="filter-select" onchange="applyFilterAndSort()">
+            <option value="">👤 所有代墊人</option>
+          </select>
+        </div>
+        <div class="table-wrapper">
+          <table id="expenseTable">
+            <thead><tr>
+              <th onclick="toggleSort('id')"># ↕</th>
+              <th onclick="toggleSort('date')">日期 ↕</th>
+              <th onclick="toggleSort('item')">項目 ↕</th>
+              <th>代墊人</th>
+              <th onclick="toggleSort('amount_twd_total')">台幣總額 ↕</th>
+              <th>狀態</th>
+              <th>操作</th>
+            </tr></thead>
+            <tbody id="expenseBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 3: Settlement -->
+    <div class="tab-content" id="tab-settlement">
+      <div class="card">
+        <div class="card-title"><span class="icon">📊</span> 每人結算淨額</div>
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">正數 = 可收回 • 負數 = 需支付 • 點擊查看明細</p>
+        <div class="settlement-grid" id="balanceGrid"></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="icon">💸</span> 最佳化轉帳清單</div>
+        <div class="transfer-list" id="transferList"></div>
+      </div>
+      <div class="card" style="margin-top:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+          <h3 style="margin:0;"><span class="icon">🔍</span> 個人明細驗算</h3>
+          <select id="detailMemberSelect" onchange="renderPersonalDetails()" class="filter-select" style="width:140px;"></select>
+        </div>
+        <div class="table-wrapper">
+          <table><thead><tr>
+            <th>日期</th><th>類別</th><th>項目</th><th>分配</th><th style="text-align:right;">金額</th>
+          </tr></thead>
+          <tbody id="personalDetailBody"></tbody></table>
+        </div>
+        <div id="personalDetailTotal" style="text-align:right;margin-top:15px;font-size:1.1em;line-height:1.6;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Expense Modal -->
+  <div class="modal-overlay" id="expenseModal" style="display:none">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title">新增花費</div>
+        <button class="btn-close" onclick="closeExpenseModal()">×</button>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <div class="form-group" style="flex:1;min-width:120px"><label>日期</label><input type="date" id="addDate"></div>
+        <div class="form-group" style="flex:2;min-width:150px"><label>項目</label><input type="text" id="addItem" placeholder="札幌晚餐"></div>
+      </div>
+      <div class="form-group"><label>備註</label><input type="text" id="addNote" placeholder="細節描述"></div>
+      <div class="form-group"><label>代墊人</label><select id="addPayer"></select></div>
+      <div class="form-group"><label>應付人員 (留空=全員)</label><input type="text" id="addDebtors" placeholder="例：林廷翰、張銘智"></div>
+      <div style="display:flex;gap:12px;">
+        <div class="form-group" style="flex:1"><label>台幣</label><input type="number" id="addTwd" placeholder="0"></div>
+        <div class="form-group" style="flex:1"><label>日幣</label><input type="number" id="addJpy" placeholder="0"></div>
+      </div>
+      <div class="form-group">
+        <label>類別</label>
+        <select id="addCategory">
+          <option value="餐飲">餐飲</option><option value="住宿">住宿</option>
+          <option value="交通">交通</option><option value="移動">移動</option>
+          <option value="雪場">雪場</option><option value="門票/活動">門票/活動</option>
+          <option value="其他">其他</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" onclick="submitAddExpense()">確定新增</button>
+    </div>
+  </div>
+
+  <!-- Detail Modal -->
+  <div class="modal-overlay" id="expenseDetailModal" style="display:none" onclick="this.style.display='none'">
+    <div class="modal-content" style="max-width:450px;" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title">🧾 分攤明細</div>
+        <button class="btn-close" onclick="document.getElementById('expenseDetailModal').style.display='none'">×</button>
+      </div>
+      <div id="detailModalContent"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
