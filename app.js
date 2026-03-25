@@ -112,16 +112,32 @@ async function loadAllBankAccounts() {
   const accounts = await callAPI("getBankAccounts");
   globalBankAccounts = accounts;
   const container = document.getElementById("allBankAccounts");
-  if (!Object.keys(accounts).length) {
-    container.innerHTML = '<p style="color:var(--text-muted);font-size:14px;">目前還沒有人設定帳號</p>';
-    return;
-  }
+  
   let html = '<div class="settlement-grid">';
-  for (const [name, info] of Object.entries(accounts)) {
-    html += `<div class="balance-card positive"><div class="balance-avatar">${name.charAt(name.length-1)}</div>
-      <div class="balance-info"><div class="balance-name">${name}</div>
-      <div style="font-size:13px;color:var(--text-secondary);">${info.bank} ••••${(info.account||"").slice(-4)}</div></div></div>`;
-  }
+  allMembers.forEach(name => {
+    const info = accounts[name];
+    if (info) {
+      const fullText = `${info.bank} ${info.account}`;
+      html += `<div class="balance-card positive">
+        <div class="balance-avatar">${name.charAt(name.length-1)}</div>
+        <div class="balance-info">
+          <div class="balance-name" style="display:flex;justify-content:space-between;align-items:center;">
+            ${name}
+            <button class="transfer-qr-btn" style="padding:4px 8px;font-size:11px;" onclick="copyText('${fullText}')">📋 複製</button>
+          </div>
+          <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;word-break:break-all;">${info.bank} - ${info.account}</div>
+        </div>
+      </div>`;
+    } else {
+      html += `<div class="balance-card zero">
+        <div class="balance-avatar">${name.charAt(name.length-1)}</div>
+        <div class="balance-info">
+          <div class="balance-name">${name}</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">尚未設定</div>
+        </div>
+      </div>`;
+    }
+  });
   container.innerHTML = html + "</div>";
 }
 
@@ -398,6 +414,14 @@ function renderTransfers(transfers) {
 }
 
 // ===== Utils =====
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    showToast("📋 已複製帳號：\n" + text, "success");
+  }).catch(() => {
+    showToast("複製失敗", "error");
+  });
+}
+
 function formatNum(n) { return n == null ? "-" : Math.round(n).toLocaleString(); }
 function esc(s) { if (!s) return ""; const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 function showToast(msg, type = "success") {
