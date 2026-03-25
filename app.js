@@ -458,33 +458,39 @@ function renderTransfers(transfers) {
   if (!transfers.length) { list.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px;">沒有需要轉帳的項目</p>'; return; }
   let html = "";
   transfers.forEach(t => {
-    // 檢查收款人有沒有帳號，有的話產生 QR
-    const info = globalBankAccounts[t.to];
+    // 檢查收款人有沒有帳號 — 支援分組名稱（如 "林大為+張雨玄"）
+    const toMembers = t.to.includes("+") ? t.to.split("+") : [t.to];
     let qrBtnHtml = "";
     let qrModalHtml = "";
-    if (info) {
-      const qrUrl = getQrUrl(info.bank, info.account);
-      if (qrUrl) {
-        const qrId = `qr-${t.from}-${t.to}-${Math.random().toString(36).substring(7)}`;
-        qrBtnHtml = `<div style="margin-top:10px;"><button class="transfer-qr-btn" onclick="document.getElementById('${qrId}').style.display='flex'">📱 顯示收款條碼</button></div>`;
-        qrModalHtml = `<div class="modal-overlay" id="${qrId}" style="display:none" onclick="this.style.display='none'">
-          <div class="modal-content" style="text-align:center;max-width:320px;" onclick="event.stopPropagation()">
-            <h3 style="margin-top:0;">${t.to} 的收款條碼</h3>
-            <p style="color:var(--text-secondary);font-size:13px;line-height:1.5;margin-bottom:20px;">
-              ${info.bank}<br>帳號：${info.account}
-            </p>
-            <div style="background:white;padding:12px;border-radius:12px;display:inline-block;">
-              <img src="${qrUrl}" width="180" height="180" style="display:block;">
-            </div>
-            <button class="btn btn-secondary" style="margin-top:20px;width:100%;" onclick="document.getElementById('${qrId}').style.display='none'">關閉</button>
-          </div>
-        </div>`;
-      }
-    }
 
-    // 已匯款按鈕（只在當前用戶是付款人時顯示）
+    // 為每個有帳號的組員產生 QR Code
+    toMembers.forEach(member => {
+      const info = globalBankAccounts[member];
+      if (info) {
+        const qrUrl = getQrUrl(info.bank, info.account);
+        if (qrUrl) {
+          const qrId = `qr-${t.from}-${member}-${Math.random().toString(36).substring(7)}`;
+          qrBtnHtml += `<div style="margin-top:10px;"><button class="transfer-qr-btn" onclick="document.getElementById('${qrId}').style.display='flex'">📱 ${member} 收款條碼</button></div>`;
+          qrModalHtml += `<div class="modal-overlay" id="${qrId}" style="display:none" onclick="this.style.display='none'">
+            <div class="modal-content" style="text-align:center;max-width:320px;" onclick="event.stopPropagation()">
+              <h3 style="margin-top:0;">${member} 的收款條碼</h3>
+              <p style="color:var(--text-secondary);font-size:13px;line-height:1.5;margin-bottom:20px;">
+                ${info.bank}<br>帳號：${info.account}
+              </p>
+              <div style="background:white;padding:12px;border-radius:12px;display:inline-block;">
+                <img src="${qrUrl}" width="180" height="180" style="display:block;">
+              </div>
+              <button class="btn btn-secondary" style="margin-top:20px;width:100%;" onclick="document.getElementById('${qrId}').style.display='none'">關閉</button>
+            </div>
+          </div>`;
+        }
+      }
+    });
+
+    // 已匯款按鈕 — 支援分組（檢查 currentUser 是否在 from 群組中）
     let transferDoneBtn = "";
-    if (t.from === currentUser) {
+    const fromMembers = t.from.includes("+") ? t.from.split("+") : [t.from];
+    if (fromMembers.includes(currentUser)) {
       transferDoneBtn = `<div style="margin-top:10px;"><button class="btn-transfer-done" onclick="showTransferConfirmModal('${t.from}','${t.to}',${t.amount})">✅ 我已匯款</button></div>`;
     }
 
