@@ -116,26 +116,45 @@ async function loadAllBankAccounts() {
   globalBankAccounts = accounts;
   const container = document.getElementById("allBankAccounts");
   
-  let html = '<div class="settlement-grid">';
+  // Build display list: group members together
+  const processed = new Set();
+  const displayList = [];
+  for (const group of MEMBER_GROUPS) {
+    displayList.push({ names: group, label: getGroupLabel(group) });
+    group.forEach(m => processed.add(m));
+  }
   allMembers.forEach(name => {
-    const info = accounts[name];
-    if (info) {
-      const fullText = `${info.bank} ${info.account}`;
-      html += `<div class="balance-card positive">
-        <div class="balance-avatar">${name.charAt(name.length-1)}</div>
-        <div class="balance-info">
-          <div class="balance-name" style="display:flex;justify-content:space-between;align-items:center;">
-            ${name}
-            <button class="transfer-qr-btn" style="padding:4px 8px;font-size:11px;" onclick="copyText('${fullText}')">📋 複製</button>
+    if (!processed.has(name)) displayList.push({ names: [name], label: name });
+  });
+
+  let html = '<div class="settlement-grid">';
+  displayList.forEach(item => {
+    // Collect bank infos for all members in the group
+    const memberInfos = item.names.map(name => ({ name, info: accounts[name] })).filter(m => m.info);
+
+    if (memberInfos.length > 0) {
+      let detailHtml = memberInfos.map(m => {
+        const fullText = `${m.info.bank} ${m.info.account}`;
+        return `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+          <div style="font-size:13px;color:var(--text-secondary);word-break:break-all;">
+            <span style="color:var(--text-primary);font-weight:500;">${m.name}</span>：${m.info.bank} - ${m.info.account}
           </div>
-          <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;word-break:break-all;">${info.bank} - ${info.account}</div>
+          <button class="transfer-qr-btn" style="padding:4px 8px;font-size:11px;flex-shrink:0;margin-left:8px;" onclick="copyText('${fullText}')">📋</button>
+        </div>`;
+      }).join('');
+
+      html += `<div class="balance-card positive">
+        <div class="balance-avatar">${item.label.charAt(item.label.length-1)}</div>
+        <div class="balance-info">
+          <div class="balance-name">${item.label}</div>
+          ${detailHtml}
         </div>
       </div>`;
     } else {
       html += `<div class="balance-card zero">
-        <div class="balance-avatar">${name.charAt(name.length-1)}</div>
+        <div class="balance-avatar">${item.label.charAt(item.label.length-1)}</div>
         <div class="balance-info">
-          <div class="balance-name">${name}</div>
+          <div class="balance-name">${item.label}</div>
           <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">尚未設定</div>
         </div>
       </div>`;
@@ -375,9 +394,26 @@ function populateDetailMemberSelect() {
   const sel = document.getElementById("detailMemberSelect");
   if (!sel) return;
   sel.innerHTML = "";
+
+  // Build grouped options
+  const processed = new Set();
+  const options = [];
+
+  for (const group of MEMBER_GROUPS) {
+    const label = getGroupLabel(group);
+    options.push(label);
+    group.forEach(m => processed.add(m));
+  }
   Object.keys(userDetails).forEach(m => {
-    const opt = new Option(m, m);
-    if (m === currentUser) opt.selected = true;
+    if (!processed.has(m)) options.push(m);
+  });
+
+  options.forEach(label => {
+    const opt = new Option(label, label);
+    // Select if currentUser matches or is in this group
+    if (label === currentUser || (label.includes('+') && label.split('+').includes(currentUser))) {
+      opt.selected = true;
+    }
     sel.appendChild(opt);
   });
 }
@@ -385,13 +421,28 @@ function populateDetailMemberSelect() {
 function renderPersonalDetails() {
   const sel = document.getElementById("detailMemberSelect");
   if (!sel) return;
-  const member = sel.value;
-  const list = (userDetails[member] || []);
+  const selected = sel.value;
+
+  // Merge details from all members in the group
+  const members = selected.includes('+') ? selected.split('+') : [selected];
+  let mergedList = [];
+  const seenTxKeys = new Set();
+  members.forEach(m => {
+    (userDetails[m] || []).forEach(tx => {
+      // Deduplicate: same id + same type = same transaction
+      const key = `${tx.id}-${tx.type}`;
+      if (!seenTxKeys.has(key)) {
+        seenTxKeys.add(key);
+        mergedList.push(tx);
+      }
+    });
+  });
+
   const tbody = document.getElementById("personalDetailBody");
   const catIcons = { 住宿:"🏨", 交通:"🚌", 餐飲:"🍜", 雪場:"⛷️", 移動:"✈️", "門票/活動":"🎫" };
   let html = "", totalPay = 0, totalOwe = 0;
 
-  list.forEach(tx => {
+  mergedList.forEach(tx => {
     const isPay = tx.type === "pay";
     const amt = Number(tx.amount);
     if (isPay) totalPay += amt; else totalOwe += amt;
@@ -406,7 +457,7 @@ function renderPersonalDetails() {
       <td style="color:${color};font-weight:bold;text-align:right;">${sign} NT$ ${formatNum(amt)}</td></tr>`;
   });
 
-  if (!list.length) html = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px;">無明細</td></tr>';
+  if (!mergedList.length) html = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px;">無明細</td></tr>';
   tbody.innerHTML = html;
 
   const net = totalPay - totalOwe;
