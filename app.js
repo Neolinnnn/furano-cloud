@@ -8,6 +8,7 @@ let filteredExpenses = [];
 let allMembers = [];
 let userDetails = {};
 let globalBankAccounts = {};
+let pendingTransfer = null;
 let currentSort = { column: 'id', order: 'asc' };
 
 // ===== QR Helper =====
@@ -403,6 +404,12 @@ function renderTransfers(transfers) {
       }
     }
 
+    // 已匯款按鈕（只在當前用戶是付款人時顯示）
+    let transferDoneBtn = "";
+    if (t.from === currentUser) {
+      transferDoneBtn = `<div style="margin-top:10px;"><button class="btn-transfer-done" onclick="showTransferConfirmModal('${t.from}','${t.to}',${t.amount})">✅ 我已匯款</button></div>`;
+    }
+
     html += `<div class="transfer-item" style="flex-wrap:wrap;">
       <div style="width:100%;display:flex;align-items:center;min-width:0;">
         <span class="transfer-from">${t.from}</span><span class="transfer-arrow" style="margin:0 12px;">→</span>
@@ -410,6 +417,7 @@ function renderTransfers(transfers) {
         <span class="transfer-amount" style="margin-left:auto;">NT$ ${formatNum(t.amount)}</span>
       </div>
       ${qrBtnHtml}
+      ${transferDoneBtn}
       ${qrModalHtml}
     </div>`;
   });
@@ -426,10 +434,27 @@ async function loadMessages() {
   }
   let html = "";
   msgs.forEach(m => {
-    html += `<div class="msg-item">
-      <div class="msg-header"><span class="msg-user">${esc(m.user)}</span><span>${esc(m.time)}</span></div>
-      <div class="msg-content">${esc(m.message)}</div>
-    </div>`;
+    // 匯款通知格式: [匯款通知] 付款人 → 收款人 NT$ 金額 | 後五碼: XXXXX | 備註
+    const transferMatch = m.message.match(/^\[匯款通知\]\s*(.+?)\s*→\s*(.+?)\s*NT\$\s*([\d,]+)\s*\|\s*後五碼:\s*(\d+)(?:\s*\|\s*(.+))?$/);
+    if (transferMatch) {
+      const [, from, to, amount, lastFive, note] = transferMatch;
+      html += `<div class="msg-item transfer-notice">
+        <div class="msg-header"><span class="msg-user">${esc(m.user)}</span><span>${esc(m.time)}</span></div>
+        <div class="msg-content">
+          <span class="transfer-notice-badge">💸 匯款通知</span>
+          ${esc(from)} → ${esc(to)} <strong style="color:var(--warning);">NT$ ${esc(amount)}</strong>
+        </div>
+        <div class="transfer-notice-detail">
+          <span>🔢 後五碼: ${esc(lastFive)}</span>
+          ${note ? `<span>📝 ${esc(note)}</span>` : ''}
+        </div>
+      </div>`;
+    } else {
+      html += `<div class="msg-item">
+        <div class="msg-header"><span class="msg-user">${esc(m.user)}</span><span>${esc(m.time)}</span></div>
+        <div class="msg-content">${esc(m.message)}</div>
+      </div>`;
+    }
   });
   board.innerHTML = html;
   board.scrollTop = board.scrollHeight;
@@ -446,6 +471,46 @@ async function sendMessage() {
     input.value = "";
     await loadMessages();
     showToast("留言已送出", "success");
+  } catch (err) {
+    showToast("發送失敗", "error");
+  } finally {
+    showLoader(false);
+  }
+}
+
+// ===== Transfer Confirm =====
+function showTransferConfirmModal(from, to, amount) {
+  pendingTransfer = { from, to, amount };
+  document.getElementById("tcFrom").textContent = from;
+  document.getElementById("tcTo").textContent = to;
+  document.getElementById("tcAmount").textContent = `NT$ ${formatNum(amount)}`;
+  document.getElementById("tcLastFive").value = "";
+  document.getElementById("tcNote").value = "";
+  document.getElementById("transferConfirmModal").style.display = "flex";
+  setTimeout(() => document.getElementById("tcLastFive").focus(), 100);
+}
+
+function closeTransferConfirmModal() {
+  document.getElementById("transferConfirmModal").style.display = "none";
+  pendingTransfer = null;
+}
+
+async function confirmTransfer() {
+  if (!pendingTransfer) return;
+  const lastFive = document.getElementById("tcLastFive").value.trim();
+  if (!lastFive || lastFive.length < 3) {
+    showToast("請輸入匯款帳號後五碼", "error");
+    return;
+  }
+  const note = document.getElementById("tcNote").value.trim();
+  const msg = `[匯款通知] ${pendingTransfer.from} → ${pendingTransfer.to} NT$ ${formatNum(pendingTransfer.amount)} | 後五碼: ${lastFive}${note ? ` | ${note}` : ''}`;
+
+  showLoader(true);
+  try {
+    await callAPI("addMessage", { user: currentUser, message: msg });
+    closeTransferConfirmModal();
+    await loadMessages();
+    showToast("匯款通知已送出！🎉", "success");
   } catch (err) {
     showToast("發送失敗", "error");
   } finally {

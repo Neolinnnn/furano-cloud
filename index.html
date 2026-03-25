@@ -199,6 +199,33 @@
     </div>
   </div>
 
+  <!-- Transfer Confirm Modal -->
+  <div class="modal-overlay" id="transferConfirmModal" style="display:none" onclick="closeTransferConfirmModal()">
+    <div class="modal-content" style="max-width:420px;" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title">✅ 確認匯款</div>
+        <button class="btn-close" onclick="closeTransferConfirmModal()">×</button>
+      </div>
+      <div class="transfer-confirm-info">
+        <div class="tc-flow">
+          <span id="tcFrom"></span>
+          <span class="tc-arrow">→</span>
+          <span id="tcTo"></span>
+        </div>
+        <div class="tc-amount" id="tcAmount"></div>
+      </div>
+      <div class="transfer-confirm-input">
+        <label>匯款帳號後五碼 <span style="color:var(--danger);">*</span></label>
+        <input type="text" id="tcLastFive" placeholder="例如：12345" maxlength="5" inputmode="numeric">
+      </div>
+      <div class="transfer-confirm-input">
+        <label>備註（選填）</label>
+        <input type="text" id="tcNote" placeholder="例如：ATM 轉帳">
+      </div>
+      <button class="btn btn-primary" onclick="confirmTransfer()">確認發送通知 ✈️</button>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
