@@ -287,6 +287,70 @@ function showDetail(id) {
   document.getElementById("expenseDetailModal").style.display = "flex";
 }
 
+// ===== Member Grouping =====
+const MEMBER_GROUPS = [
+  ["林大為", "張雨玄"],
+  ["林君翰", "定定"],
+];
+
+function getGroupLabel(members) {
+  return members.join("+");
+}
+
+function findGroupForMember(name) {
+  for (const group of MEMBER_GROUPS) {
+    if (group.includes(name)) return group;
+  }
+  return null;
+}
+
+function applyGrouping(balance) {
+  const grouped = {};
+  const processed = new Set();
+
+  // First, merge grouped members
+  for (const group of MEMBER_GROUPS) {
+    const label = getGroupLabel(group);
+    let sum = 0;
+    for (const m of group) {
+      sum += (balance[m] || 0);
+      processed.add(m);
+    }
+    grouped[label] = Math.round(sum);
+  }
+
+  // Then, keep ungrouped members as-is
+  for (const [name, amt] of Object.entries(balance)) {
+    if (!processed.has(name)) {
+      grouped[name] = amt;
+    }
+  }
+
+  return grouped;
+}
+
+function recalcTransfers(groupedBalance) {
+  const creditors = [], debtorsList = [];
+  Object.entries(groupedBalance).forEach(([name, amt]) => {
+    if (amt > 1) creditors.push({ name, amount: amt });
+    else if (amt < -1) debtorsList.push({ name, amount: -amt });
+  });
+  creditors.sort((a, b) => b.amount - a.amount);
+  debtorsList.sort((a, b) => b.amount - a.amount);
+
+  const transfers = [];
+  let ci = 0, di = 0;
+  while (ci < creditors.length && di < debtorsList.length) {
+    const t = Math.min(creditors[ci].amount, debtorsList[di].amount);
+    transfers.push({ from: debtorsList[di].name, to: creditors[ci].name, amount: Math.round(t) });
+    creditors[ci].amount -= t;
+    debtorsList[di].amount -= t;
+    if (creditors[ci].amount < 1) ci++;
+    if (debtorsList[di].amount < 1) di++;
+  }
+  return transfers;
+}
+
 // ===== Settlement =====
 async function loadSettlement() {
   showLoader(true);
@@ -294,9 +358,14 @@ async function loadSettlement() {
     const data = await callAPI("getSettlement");
     userDetails = data.user_details || {};
     populateDetailMemberSelect();
-    renderBalance(data.balance);
-    renderTransfers(data.transfers);
-    updatePersonalSummary(data.balance);
+
+    // Apply member grouping
+    const groupedBalance = applyGrouping(data.balance);
+    const groupedTransfers = recalcTransfers(groupedBalance);
+
+    renderBalance(groupedBalance);
+    renderTransfers(groupedTransfers);
+    updatePersonalSummary(groupedBalance);
     renderPersonalDetails();
     await loadMessages();
   } finally { showLoader(false); }
@@ -349,10 +418,17 @@ function renderPersonalDetails() {
 
 function updatePersonalSummary(balance) {
   const div = document.getElementById("personalSummary");
-  const b = balance[currentUser] || 0;
-  if (b === 0) div.innerHTML = `<div><h2>👋 嗨，${currentUser}</h2><p style="color:var(--text-secondary)">已結清！</p></div><div class="ps-amount ps-zero">NT$ 0</div>`;
-  else if (b > 0) div.innerHTML = `<div><h2>👋 嗨，${currentUser}</h2><p style="color:var(--text-secondary)">可收回</p></div><div class="ps-amount ps-positive">+ NT$ ${formatNum(b)}</div>`;
-  else div.innerHTML = `<div><h2>👋 嗨，${currentUser}</h2><p style="color:var(--text-secondary)">需支付</p></div><div class="ps-amount ps-negative">- NT$ ${formatNum(Math.abs(b))}</div>`;
+  // Look up balance: try direct name first, then check if user is in a group
+  let b = balance[currentUser];
+  if (b === undefined) {
+    const group = findGroupForMember(currentUser);
+    if (group) b = balance[getGroupLabel(group)] || 0;
+    else b = 0;
+  }
+  const displayName = currentUser;
+  if (b === 0) div.innerHTML = `<div><h2>👋 嗨，${displayName}</h2><p style="color:var(--text-secondary)">已結清！</p></div><div class="ps-amount ps-zero">NT$ 0</div>`;
+  else if (b > 0) div.innerHTML = `<div><h2>👋 嗨，${displayName}</h2><p style="color:var(--text-secondary)">可收回</p></div><div class="ps-amount ps-positive">+ NT$ ${formatNum(b)}</div>`;
+  else div.innerHTML = `<div><h2>👋 嗨，${displayName}</h2><p style="color:var(--text-secondary)">需支付</p></div><div class="ps-amount ps-negative">- NT$ ${formatNum(Math.abs(b))}</div>`;
   div.style.display = "flex";
 }
 
