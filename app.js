@@ -51,7 +51,7 @@ async function loadMembers() {
 
     // Add grouped login options first (use raw member names from API)
     const LOGIN_GROUPS = [
-      ["林大為", "雨玄"],
+      ["林大為", "張雨玄"],
       ["林君翰", "定定"],
     ];
     for (const group of LOGIN_GROUPS) {
