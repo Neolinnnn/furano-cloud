@@ -48,21 +48,6 @@ async function loadMembers() {
     const select = document.getElementById("memberSelect");
     const addPayer = document.getElementById("addPayer");
     const filterPayer = document.getElementById("filterPayer");
-
-    // Add grouped login options first (use raw member names from API)
-    const LOGIN_GROUPS = [
-      ["林大為", "張雨玄"],
-      ["林君翰", "定定"],
-    ];
-    for (const group of LOGIN_GROUPS) {
-      const allExist = group.every(name => allMembers.includes(name));
-      if (allExist) {
-        const label = group.join("+");
-        select.appendChild(new Option(`👫 ${label}`, label));
-      }
-    }
-
-    // Then add all individual members
     allMembers.forEach(m => {
       select.appendChild(new Option(m, m));
       addPayer.appendChild(new Option(m, m));
@@ -77,17 +62,11 @@ function login() {
   const name = document.getElementById("memberSelect").value;
   if (!name) { showToast("請選擇成員", "error"); return; }
   currentUser = name;
-  const displayName = name.includes("+") ? name : name;
   document.getElementById("loginScreen").style.display = "none";
   document.getElementById("appContainer").style.display = "block";
-  document.getElementById("userName").textContent = displayName;
-  document.getElementById("userAvatar").textContent = displayName.charAt(displayName.length - 1);
-  if (name.includes("+")) {
-    // Group login: load bank accounts for all group members
-    loadAllBankAccounts(); loadDashboard(); loadExpenses(); loadSettlement();
-  } else {
-    loadBankAccount(); loadAllBankAccounts(); loadDashboard(); loadExpenses(); loadSettlement();
-  }
+  document.getElementById("userName").textContent = name;
+  document.getElementById("userAvatar").textContent = name.charAt(name.length - 1);
+  loadBankAccount(); loadAllBankAccounts(); loadDashboard(); loadExpenses(); loadSettlement();
 }
 
 function logout() {
