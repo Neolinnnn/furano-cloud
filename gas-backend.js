@@ -122,7 +122,7 @@ function initSheet() {
 // ===== 暱稱對應 =====
 
 const NICKNAME_MAP = {
-  "翰": "林廷翰", "林廷翰": "林廷翰",
+  "翰": "林廷翰", "林廷翰": "林廷翰", "廷翰": "林廷翰",
   "君翰": "林君翰", "君": "林君翰", "林君翰": "林君翰",
   "定": "定定", "定定": "定定",
   "祥": "李鴻祥", "祥哥": "李鴻祥", "李鴻祥": "李鴻祥",
@@ -402,7 +402,7 @@ function getMessages() {
   const list = [];
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
-    list.push({ time: String(row[0]||""), user: String(row[1]||""), message: String(row[2]||"") });
+    list.push({ time: String(row[0] || ""), user: String(row[1] || ""), message: String(row[2] || "") });
   }
   return list;
 }
