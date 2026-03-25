@@ -295,6 +295,7 @@ async function loadSettlement() {
     renderTransfers(data.transfers);
     updatePersonalSummary(data.balance);
     renderPersonalDetails();
+    await loadMessages();
   } finally { showLoader(false); }
 }
 
@@ -411,6 +412,43 @@ function renderTransfers(transfers) {
     </div>`;
   });
   list.innerHTML = html;
+}
+
+// ===== Messages =====
+async function loadMessages() {
+  const msgs = await callAPI("getMessages");
+  const board = document.getElementById("messageBoard");
+  if (!msgs || !msgs.length) {
+    board.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:30px 20px;">還沒有留言，頭香等你來搶！</div>';
+    return;
+  }
+  let html = "";
+  msgs.forEach(m => {
+    html += `<div class="msg-item">
+      <div class="msg-header"><span class="msg-user">${esc(m.user)}</span><span>${esc(m.time)}</span></div>
+      <div class="msg-content">${esc(m.message)}</div>
+    </div>`;
+  });
+  board.innerHTML = html;
+  board.scrollTop = board.scrollHeight;
+}
+
+async function sendMessage() {
+  const input = document.getElementById("msgInput");
+  const message = input.value.trim();
+  if (!message) return;
+  
+  showLoader(true);
+  try {
+    await callAPI("addMessage", { user: currentUser, message });
+    input.value = "";
+    await loadMessages();
+    showToast("留言已送出", "success");
+  } catch (err) {
+    showToast("發送失敗", "error");
+  } finally {
+    showLoader(false);
+  }
 }
 
 // ===== Utils =====

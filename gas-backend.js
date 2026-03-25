@@ -12,6 +12,7 @@
 // ===== 設定 =====
 const SHEET_EXPENSES = "花費明細";
 const SHEET_MEMBERS = "成員";
+const SHEET_MESSAGES = "留言板";
 const JPY_TO_TWD = 0.2038;
 
 // ===== Web App 入口 =====
@@ -63,6 +64,12 @@ function handleRequest(e) {
       case "initSheet":
         result = initSheet();
         break;
+      case "getMessages":
+        result = getMessages();
+        break;
+      case "addMessage":
+        result = addMessage(JSON.parse(e.postData.contents));
+        break;
       default:
         result = { error: "Unknown action: " + action };
     }
@@ -98,6 +105,15 @@ function initSheet() {
     // 預填成員
     const defaultMembers = ["林廷翰", "林君翰", "定定", "李鴻祥", "張銘智", "黃珮儒", "王巧衣", "林大為", "王雨玄", "辣椒"];
     defaultMembers.forEach(m => memSheet.appendRow([m, "", ""]));
+  }
+
+  // 建立「留言板」
+  let msgSheet = ss.getSheetByName(SHEET_MESSAGES);
+  if (!msgSheet) {
+    msgSheet = ss.insertSheet(SHEET_MESSAGES);
+    msgSheet.appendRow(["時間", "留言人", "內容"]);
+    msgSheet.getRange(1, 1, 1, 3).setFontWeight("bold");
+    msgSheet.setFrozenRows(1);
   }
 
   return { ok: true, message: "工作表已初始化" };
@@ -375,4 +391,27 @@ function getSettlement() {
   Object.entries(balance).forEach(([k, v]) => roundedBalance[k] = Math.round(v));
 
   return { balance: roundedBalance, transfers, user_details: userDetails };
+}
+
+// ===== Messages =====
+
+function getMessages() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_MESSAGES);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  const data = sheet.getDataRange().getValues();
+  const list = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    list.push({ time: String(row[0]||""), user: String(row[1]||""), message: String(row[2]||"") });
+  }
+  return list;
+}
+
+function addMessage(payload) {
+  const { user, message } = payload;
+  if (!user || !message) return { error: "缺少參數" };
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_MESSAGES);
+  const time = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy-MM-dd HH:mm:ss");
+  sheet.appendRow([time, user, message]);
+  return { ok: true };
 }

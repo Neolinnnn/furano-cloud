@@ -127,6 +127,20 @@
         <div class="card-title"><span class="icon">💸</span> 最佳化轉帳清單</div>
         <div class="transfer-list" id="transferList"></div>
       </div>
+      
+      <!-- 匯款留言板 -->
+      <div class="card" style="margin-top:20px;">
+        <div class="card-title"><span class="icon">💬</span> 匯款留言板</div>
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:12px;">已經匯款了嗎？在這裡留言告訴大家吧！</p>
+        <div class="message-board" id="messageBoard">
+          <!-- messages -->
+        </div>
+        <div style="display:flex;gap:10px;margin-top:12px;">
+          <input type="text" id="msgInput" placeholder="例如：已匯款 500 給廷翰，後五碼 12345" style="flex:1;border-radius:var(--radius-sm);border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:white;padding:10px 12px;font-size:14px;outline:none;">
+          <button class="btn btn-primary" style="white-space:nowrap;padding:10px 16px;" onclick="sendMessage()">發送 ✈️</button>
+        </div>
+      </div>
+
       <div class="card" style="margin-top:20px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
           <h3 style="margin:0;"><span class="icon">🔍</span> 個人明細驗算</h3>
