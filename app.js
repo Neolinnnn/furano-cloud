@@ -7,7 +7,17 @@ let allExpenses = [];
 let filteredExpenses = [];
 let allMembers = [];
 let userDetails = {};
+let globalBankAccounts = {};
 let currentSort = { column: 'id', order: 'asc' };
+
+// ===== QR Helper =====
+function getQrUrl(bank, account) {
+  if (!bank || !account) return null;
+  const match = bank.match(/^(\d{3})/);
+  const bankCode = match ? match[1] : bank.substring(0, 3);
+  const uri = `TWQRP://${bankCode}ntransfer/15/01/V1?D6=${account}&D9=&D10=901`;
+  return `https://quickchart.io/qr?text=${encodeURIComponent(uri)}&size=150&margin=1`;
+}
 
 // ===== API Helper =====
 async function callAPI(action, payload = null) {
@@ -74,20 +84,33 @@ function switchTab(tabName) {
 // ===== Bank Accounts =====
 async function loadBankAccount() {
   const accounts = await callAPI("getBankAccounts");
+  globalBankAccounts = accounts;
   const info = accounts[currentUser];
   if (info) {
     document.getElementById("bankName").value = info.bank || "";
     document.getElementById("bankAccount").value = info.account || "";
     document.getElementById("btnDeleteBank").style.display = "block";
+    
+    // 渲染 QR Code
+    const qrSection = document.getElementById("myQrSection");
+    const qrUrl = getQrUrl(info.bank, info.account);
+    if (qrUrl) {
+      document.getElementById("myQrImg").src = qrUrl;
+      qrSection.style.display = "flex";
+    } else {
+      qrSection.style.display = "none";
+    }
   } else {
     document.getElementById("bankName").value = "";
     document.getElementById("bankAccount").value = "";
     document.getElementById("btnDeleteBank").style.display = "none";
+    document.getElementById("myQrSection").style.display = "none";
   }
 }
 
 async function loadAllBankAccounts() {
   const accounts = await callAPI("getBankAccounts");
+  globalBankAccounts = accounts;
   const container = document.getElementById("allBankAccounts");
   if (!Object.keys(accounts).length) {
     container.innerHTML = '<p style="color:var(--text-muted);font-size:14px;">目前還沒有人設定帳號</p>';
@@ -337,9 +360,39 @@ function renderTransfers(transfers) {
   if (!transfers.length) { list.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px;">沒有需要轉帳的項目</p>'; return; }
   let html = "";
   transfers.forEach(t => {
-    html += `<div class="transfer-item">
-      <span class="transfer-from">${t.from}</span><span class="transfer-arrow">→</span>
-      <span class="transfer-to">${t.to}</span><span class="transfer-amount">NT$ ${formatNum(t.amount)}</span></div>`;
+    // 檢查收款人有沒有帳號，有的話產生 QR
+    const info = globalBankAccounts[t.to];
+    let qrBtnHtml = "";
+    let qrModalHtml = "";
+    if (info) {
+      const qrUrl = getQrUrl(info.bank, info.account);
+      if (qrUrl) {
+        const qrId = `qr-${t.from}-${t.to}-${Math.random().toString(36).substring(7)}`;
+        qrBtnHtml = `<div style="margin-top:10px;"><button class="transfer-qr-btn" onclick="document.getElementById('${qrId}').style.display='flex'">📱 顯示收款條碼</button></div>`;
+        qrModalHtml = `<div class="modal-overlay" id="${qrId}" style="display:none" onclick="this.style.display='none'">
+          <div class="modal-content" style="text-align:center;max-width:320px;" onclick="event.stopPropagation()">
+            <h3 style="margin-top:0;">${t.to} 的收款條碼</h3>
+            <p style="color:var(--text-secondary);font-size:13px;line-height:1.5;margin-bottom:20px;">
+              ${info.bank}<br>帳號：${info.account}
+            </p>
+            <div style="background:white;padding:12px;border-radius:12px;display:inline-block;">
+              <img src="${qrUrl}" width="180" height="180" style="display:block;">
+            </div>
+            <button class="btn btn-secondary" style="margin-top:20px;width:100%;" onclick="document.getElementById('${qrId}').style.display='none'">關閉</button>
+          </div>
+        </div>`;
+      }
+    }
+
+    html += `<div class="transfer-item" style="flex-wrap:wrap;">
+      <div style="width:100%;display:flex;align-items:center;min-width:0;">
+        <span class="transfer-from">${t.from}</span><span class="transfer-arrow" style="margin:0 12px;">→</span>
+        <span class="transfer-to">${t.to}</span>
+        <span class="transfer-amount" style="margin-left:auto;">NT$ ${formatNum(t.amount)}</span>
+      </div>
+      ${qrBtnHtml}
+      ${qrModalHtml}
+    </div>`;
   });
   list.innerHTML = html;
 }

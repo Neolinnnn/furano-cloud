@@ -58,6 +58,13 @@
           <button class="btn btn-primary" onclick="saveBankAccount()">💾 儲存</button>
           <button class="btn btn-danger" id="btnDeleteBank" style="display:none;" onclick="deleteBankAccount()">🗑️ 刪除</button>
         </div>
+        <div class="qr-section" id="myQrSection" style="display:none;">
+          <img id="myQrImg" class="qr-code-img" src="" alt="QR Code">
+          <div>
+            <h3 style="margin:0 0 8px;font-size:16px;">📱 台灣 Pay 測試條碼</h3>
+            <p style="color:var(--text-secondary);font-size:13px;line-height:1.5;">掃描試試！請確保銀行名稱開頭包含 3 碼銀行代號<br>（例如：<span style="color:white;font-weight:600;">822 中國信託</span>）</p>
+          </div>
+        </div>
       </div>
       <div class="card">
         <div class="card-title"><span class="icon">👥</span> 成員帳號列表</div>
