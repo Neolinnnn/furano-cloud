@@ -1,5 +1,5 @@
 // ===== 設定：填入你的 Google Apps Script Web App URL =====
-const API_URL = "在這裡貼上你的 Google Apps Script Web App URL";
+const API_URL = "https://script.google.com/macros/s/AKfycbw_bt7uNJrVzY9nBjI4420ORFIO8gdJo7VwBcjAMqByXbZNF911rAAsPwbBJ7Lhodp2kQ/exec";
 
 // ===== State =====
 let currentUser = null;
