@@ -350,6 +350,7 @@ function getSettlement() {
         userDetails[p].push({
           id: exp.id, date: exp.date, item: exp.item, note: exp.note,
           category: exp.category, type: "pay", amount: perPayer,
+          payers: payers, debtors: debtors,
           desc: payers.length > 1 ? `代墊 (${payers.length}人平分)` : "代墊全額"
         });
       }
@@ -361,6 +362,7 @@ function getSettlement() {
         userDetails[d].push({
           id: exp.id, date: exp.date, item: exp.item, note: exp.note,
           category: exp.category, type: "owe", amount: perPerson,
+          payers: payers, debtors: debtors,
           desc: `應付 (${debtors.length}人平分)`
         });
       }

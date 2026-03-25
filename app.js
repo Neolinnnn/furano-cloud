@@ -326,13 +326,15 @@ function renderPersonalDetails() {
     const sign = isPay ? "+" : "-";
     const color = isPay ? "var(--accent)" : "var(--warning)";
     const icon = catIcons[tx.category] || "📌";
-    html += `<tr><td>${esc(tx.date)}</td><td>${icon}</td>
+    html += `<tr><td>${formatDate(tx.date)}</td><td>${icon}</td>
       <td><div style="font-weight:600">${esc(tx.item||"-")}</div><div style="font-size:11px;color:var(--text-muted)">${esc(tx.note||"")}</div></td>
+      <td style="font-size:13px;">${esc((tx.payers||[]).join("、")||"-")}</td>
+      <td style="font-size:13px;">${esc((tx.debtors||[]).join("、")||"-")}</td>
       <td><span class="badge ${isPay?'badge-ok':'badge-pending'}">${esc(tx.desc)}</span></td>
       <td style="color:${color};font-weight:bold;text-align:right;">${sign} NT$ ${formatNum(amt)}</td></tr>`;
   });
 
-  if (!list.length) html = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">無明細</td></tr>';
+  if (!list.length) html = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px;">無明細</td></tr>';
   tbody.innerHTML = html;
 
   const net = totalPay - totalOwe;
@@ -461,6 +463,17 @@ function copyText(text) {
 }
 
 function formatNum(n) { return n == null ? "-" : Math.round(n).toLocaleString(); }
+function formatDate(d) {
+  if (!d || d === "-") return "-";
+  const s = String(d).trim();
+  const slashMatch = s.match(/^(\d{1,2})\/(\d{1,2})/);
+  if (slashMatch) return `${slashMatch[1].padStart(2,'0')}/${slashMatch[2].padStart(2,'0')}`;
+  const cnMatch = s.match(/(\d{1,2})月(\d{1,2})日?/);
+  if (cnMatch) return `${cnMatch[1].padStart(2,'0')}/${cnMatch[2].padStart(2,'0')}`;
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) return `${String(parsed.getMonth()+1).padStart(2,'0')}/${String(parsed.getDate()).padStart(2,'0')}`;
+  return d;
+}
 function esc(s) { if (!s) return ""; const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 function showToast(msg, type = "success") {
   const t = document.createElement("div"); t.className = `toast toast-${type}`; t.textContent = msg;
