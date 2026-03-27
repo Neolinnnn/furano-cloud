@@ -423,17 +423,28 @@ function renderPersonalDetails() {
   if (!sel) return;
   const selected = sel.value;
 
-  // Merge details from all members in the group
+  // Merge details from all members in the group, summing amounts for shared transactions
   const members = selected.includes('+') ? selected.split('+') : [selected];
   let mergedList = [];
-  const seenTxKeys = new Set();
+  const seenTxMap = new Map();
   members.forEach(m => {
     (userDetails[m] || []).forEach(tx => {
-      // Deduplicate: same id + same type = same transaction
       const key = `${tx.id}-${tx.type}`;
-      if (!seenTxKeys.has(key)) {
-        seenTxKeys.add(key);
-        mergedList.push(tx);
+      if (!seenTxMap.has(key)) {
+        seenTxMap.set(key, mergedList.length);
+        mergedList.push(Object.assign({}, tx, { _count: 1 }));
+      } else {
+        const idx = seenTxMap.get(key);
+        mergedList[idx].amount = Number(mergedList[idx].amount) + Number(tx.amount);
+        mergedList[idx]._count += 1;
+        const c = mergedList[idx]._count;
+        if (tx.type === 'owe') {
+          const total = tx.debtors ? tx.debtors.length : 1;
+          mergedList[idx].desc = `應付 (${total}人平分 ×${c}份)`;
+        } else if (tx.type === 'pay') {
+          const total = tx.payers ? tx.payers.length : 1;
+          mergedList[idx].desc = total > 1 ? `代墊 (${total}人平分 ×${c}份)` : `代墊全額 ×${c}份`;
+        }
       }
     });
   });
