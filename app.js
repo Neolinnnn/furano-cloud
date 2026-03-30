@@ -10,6 +10,7 @@ let userDetails = {};
 let globalBankAccounts = {};
 let pendingTransfer = null;
 let currentSort = { column: 'id', order: 'asc' };
+let currentGroupedTransfers = [];
 
 // ===== QR Helper =====
 function getQrUrl(bank, account) {
@@ -378,12 +379,10 @@ async function loadSettlement() {
     userDetails = data.user_details || {};
     populateDetailMemberSelect();
 
-    // Apply member grouping
     const groupedBalance = applyGrouping(data.balance);
-    const groupedTransfers = recalcTransfers(groupedBalance);
+    currentGroupedTransfers = recalcTransfers(groupedBalance);
 
     renderBalance(groupedBalance);
-    renderTransfers(groupedTransfers);
     updatePersonalSummary(groupedBalance);
     renderPersonalDetails();
     await loadMessages();
@@ -515,17 +514,18 @@ function selectMember(name) {
   if (sel) { sel.value = name; renderPersonalDetails(); sel.scrollIntoView({ behavior:"smooth", block:"center" }); }
 }
 
-function renderTransfers(transfers) {
+function renderTransfers(transfers, completedNotifications = []) {
   const list = document.getElementById("transferList");
   if (!transfers.length) { list.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px;">沒有需要轉帳的項目</p>'; return; }
   let html = "";
   transfers.forEach(t => {
-    // 檢查收款人有沒有帳號 — 支援分組名稱（如 "林大為+張雨玄"）
+    const matches = completedNotifications.filter(n => n.from === t.from && n.to === t.to);
+    const isCompleted = matches.length > 0;
+
     const toMembers = t.to.includes("+") ? t.to.split("+") : [t.to];
     let qrBtnHtml = "";
     let qrModalHtml = "";
 
-    // 為每個有帳號的組員產生 QR Code
     toMembers.forEach(member => {
       const info = globalBankAccounts[member];
       if (info) {
@@ -549,21 +549,29 @@ function renderTransfers(transfers) {
       }
     });
 
-    // 已匯款按鈕 — 支援分組（檢查 currentUser 是否在 from 群組中）
-    let transferDoneBtn = "";
-    const fromMembers = t.from.includes("+") ? t.from.split("+") : [t.from];
-    if (fromMembers.includes(currentUser)) {
-      transferDoneBtn = `<div style="margin-top:10px;"><button class="btn-transfer-done" onclick="showTransferConfirmModal('${t.from}','${t.to}',${t.amount})">✅ 我已匯款</button></div>`;
+    let transferStatusHtml = "";
+    if (isCompleted) {
+      const latest = matches[matches.length - 1];
+      const countNote = matches.length > 1 ? ` (共 ${matches.length} 筆通知)` : '';
+      transferStatusHtml = `<div class="transfer-done-info">
+        <span class="transfer-done-badge">✅ 已匯款完成</span>
+        <span class="transfer-done-detail">${esc(latest.user)} · ${esc(latest.time)} · 後五碼: ${esc(latest.lastFive)}${countNote}</span>
+      </div>`;
+    } else {
+      const fromMembers = t.from.includes("+") ? t.from.split("+") : [t.from];
+      if (fromMembers.includes(currentUser)) {
+        transferStatusHtml = `<div style="margin-top:10px;"><button class="btn-transfer-done" onclick="showTransferConfirmModal('${t.from}','${t.to}',${t.amount})">✅ 我已匯款</button></div>`;
+      }
     }
 
-    html += `<div class="transfer-item" style="flex-wrap:wrap;">
+    html += `<div class="transfer-item${isCompleted ? ' transfer-completed' : ''}" style="flex-wrap:wrap;">
       <div style="width:100%;display:flex;align-items:center;min-width:0;">
         <span class="transfer-from">${t.from}</span><span class="transfer-arrow" style="margin:0 12px;">→</span>
         <span class="transfer-to">${t.to}</span>
         <span class="transfer-amount" style="margin-left:auto;">NT$ ${formatNum(t.amount)}</span>
       </div>
       ${qrBtnHtml}
-      ${transferDoneBtn}
+      ${transferStatusHtml}
       ${qrModalHtml}
     </div>`;
   });
@@ -571,8 +579,35 @@ function renderTransfers(transfers) {
 }
 
 // ===== Messages =====
+const TRANSFER_NOTICE_RE = /^\[匯款通知\]\s*(.+?)\s*→\s*(.+?)\s*NT\$\s*([\d,]+)\s*\|\s*後五碼:\s*(\d+)(?:\s*\|\s*(.+))?$/;
+
+function parseTransferNotifications(msgs) {
+  if (!msgs || !msgs.length) return [];
+  const notifications = [];
+  msgs.forEach(m => {
+    const match = m.message.match(TRANSFER_NOTICE_RE);
+    if (match) {
+      const [, from, to, amountStr, lastFive, note] = match;
+      notifications.push({
+        from: from.trim(), to: to.trim(),
+        amount: parseInt(amountStr.replace(/,/g, ''), 10),
+        lastFive, note: note || '', user: m.user, time: m.time,
+      });
+    }
+  });
+  return notifications;
+}
+
 async function loadMessages() {
   const msgs = await callAPI("getMessages");
+  if (currentGroupedTransfers.length > 0) {
+    const completedNotifications = parseTransferNotifications(msgs);
+    renderTransfers(currentGroupedTransfers, completedNotifications);
+  }
+  renderMessages(msgs);
+}
+
+function renderMessages(msgs) {
   const board = document.getElementById("messageBoard");
   if (!msgs || !msgs.length) {
     board.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:30px 20px;">還沒有留言，頭香等你來搶！</div>';
@@ -580,8 +615,7 @@ async function loadMessages() {
   }
   let html = "";
   msgs.forEach(m => {
-    // 匯款通知格式: [匯款通知] 付款人 → 收款人 NT$ 金額 | 後五碼: XXXXX | 備註
-    const transferMatch = m.message.match(/^\[匯款通知\]\s*(.+?)\s*→\s*(.+?)\s*NT\$\s*([\d,]+)\s*\|\s*後五碼:\s*(\d+)(?:\s*\|\s*(.+))?$/);
+    const transferMatch = m.message.match(TRANSFER_NOTICE_RE);
     if (transferMatch) {
       const [, from, to, amount, lastFive, note] = transferMatch;
       html += `<div class="msg-item transfer-notice">
